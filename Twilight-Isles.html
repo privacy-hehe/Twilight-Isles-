@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Townscaper-Style Engine: Twilight Textures</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #1e2749; /* Deep twilight blue */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        canvas { display: block; touch-action: none; }
+        
+        #palette {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            background: rgba(20, 25, 45, 0.85);
+            padding: 12px 24px;
+            border-radius: 40px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .color-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .color-btn.active {
+            border-color: #fff;
+            transform: scale(1.25) translateY(-4px);
+            box-shadow: 0 4px 15px rgba(255,255,255,0.2);
+        }
+        
+        #toolbar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: rgba(20, 25, 45, 0.85);
+            padding: 15px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 130px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .toolbar-label {
+            font-size: 11px;
+            font-weight: 800;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: -2px;
+            margin-top: 5px;
+        }
+
+        .tool-btn {
+            background: #2a365c;
+            border: 1px solid rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            color: #a8b2d1;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tool-btn:hover { background: #344270; color: #fff; }
+        .tool-btn.active-tool {
+            background: #64ffda;
+            color: #0a192f;
+            box-shadow: 0 0 10px rgba(100, 255, 218, 0.3);
+        }
+        .tool-btn.danger {
+            background: #e06c75;
+            color: white;
+            margin-top: 5px;
+        }
+        .tool-btn.danger:hover { background: #be5058; }
+
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #a8b2d1;
+            font-size: 13px;
+            font-weight: bold;
+            pointer-events: none;
+            background: rgba(20, 25, 45, 0.7);
+            padding: 15px;
+            border-radius: 12px;
+            line-height: 1.6;
+            border: 1px solid rgba(255,255,255,0.05);
+            backdrop-filter: blur(5px);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="instructions">
+        Left Click (Tap): Build<br>
+        Right Click: Delete<br>
+        Drag: Rotate Camera
+    </div>
+
+    <div id="toolbar">
+        <div class="toolbar-label">Action</div>
+        <button id="modeBuild" class="tool-btn active-tool">Build</button>
+        <button id="modeDelete" class="tool-btn">Delete</button>
+        
+        <div class="toolbar-label" style="margin-top: 10px;">Shape</div>
+        <button id="shapeSquare" class="tool-btn active-tool">Square</button>
+        <button id="shapeRound" class="tool-btn">Round</button>
+        <button id="shapeArch" class="tool-btn">Arch</button>
+        <button id="shapeWedge" class="tool-btn">Wedge</button>
+
+        <button id="clearBtn" class="tool-btn danger">Clear All</button>
+    </div>
+
+    <div id="palette"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        /**
+         * Procedural Texture Generator
+         */
+        const TextureFactory = {
+            createStuccoTexture: (hexColor) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256; canvas.height = 256;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.fillStyle = hexColor;
+                ctx.fillRect(0, 0, 256, 256);
+                
+                // Add noisy stucco dots
+                for(let i = 0; i < 15000; i++) {
+                    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+                    ctx.fillRect(Math.random() * 256, Math.random() * 256, 1, 1);
+                }
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+                return tex;
+            },
+            
+            createStoneTexture: () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256; canvas.height = 256;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.fillStyle = '#8b939c'; // Base grey
+                ctx.fillRect(0, 0, 256, 256);
+                
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+                for(let y = 0; y < 256; y += 32) {
+                    ctx.fillRect(0, y, 256, 2);
+                    let offset = (y / 32) % 2 === 0 ? 0 : 32;
+                    for(let x = offset; x < 256; x += 64) {
+                        ctx.fillRect(x, y, 2, 32);
+                        // Add some highlight for depth
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                        ctx.fillRect(x+2, y+2, 60, 28);
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+                    }
+                }
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+                return tex;
+            },
+
+            createRoofTexture: () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256; canvas.height = 256;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#1e1e24'; 
+                ctx.fillRect(0, 0, 256, 256);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                for(let y = 0; y < 256; y += 16) {
+                    ctx.fillRect(0, y + 14, 256, 2);
+                    for(let x = 0; x < 256; x += 32) {
+                        ctx.fillRect(x + (y%32), y, 2, 16);
+                    }
+                }
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+                tex.repeat.set(2, 2);
+                return tex;
+            }
+        };
+
+        class TownscaperEngine {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x1e2749);
+                this.scene.fog = new THREE.FogExp2(0x1e2749, 0.012);
+
+                this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+                this.camera.position.set(20, 15, 20);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                this.renderer.outputEncoding = THREE.sRGBEncoding;
+                document.body.appendChild(this.renderer.domElement);
+
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.enableDamping = true;
+                this.controls.dampingFactor = 0.05;
+                this.controls.maxPolarAngle = Math.PI / 2 - 0.05; 
+                this.controls.minDistance = 5;
+                this.controls.maxDistance = 100;
+
+                this.blocks = new Map(); 
+                this.interactables = []; 
+                this.textureCache = {}; // Cache to prevent memory leaks from generating too many canvases
+                
+                // Moody, vibrant color palette
+                this.colors = [
+                    '#f4f1de', // Cream
+                    '#e9c46a', // Gold
+                    '#f4a261', // Orange
+                    '#e76f51', // Rust
+                    '#2a9d8f', // Teal
+                    '#457b9d', // Blue
+                    '#a3b18a'  // Sage
+                ];
+                this.activeColor = this.colors[0];
+                this.buildMode = true; 
+                this.activeShape = 'square'; 
+
+                this.roofColor = 0xb85d56; // Dimmer terracotta for twilight
+
+                this.initGeometry();
+                this.initLighting();
+                this.initEnvironment();
+                this.initCursor();
+                this.initInteraction();
+                this.setupUI();
+
+                this.animate();
+            }
+
+            initGeometry() {
+                // 1. Square
+                this.boxGeo = new THREE.BoxGeometry(1, 1, 1);
+                
+                // 2. Round
+                this.cylGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
+                
+                // 3. Arch (Extrude)
+                const archShape = new THREE.Shape();
+                archShape.moveTo(-0.5, -0.5);
+                archShape.lineTo(-0.3, -0.5);
+                archShape.absarc(0, -0.5, 0.3, Math.PI, 0, true);
+                archShape.lineTo(0.5, -0.5);
+                archShape.lineTo(0.5, 0.5);
+                archShape.lineTo(-0.5, 0.5);
+                archShape.lineTo(-0.5, -0.5);
+                this.archGeo = new THREE.ExtrudeGeometry(archShape, { depth: 1, bevelEnabled: false });
+                this.archGeo.translate(0, 0, -0.5); // Center the pivot
+
+                // 4. Wedge (Extrude)
+                const wedgeShape = new THREE.Shape();
+                wedgeShape.moveTo(-0.5, -0.5);
+                wedgeShape.lineTo(0.5, -0.5);
+                wedgeShape.lineTo(-0.5, 0.5);
+                wedgeShape.lineTo(-0.5, -0.5);
+                this.wedgeGeo = new THREE.ExtrudeGeometry(wedgeShape, { depth: 1, bevelEnabled: false });
+                this.wedgeGeo.translate(0, 0, -0.5);
+
+                // Roofs
+                this.roofGeo = new THREE.ConeGeometry(0.75, 0.8, 4);
+                this.roofGeo.rotateY(Math.PI / 4);
+                this.roofGeo.translate(0, 0.9, 0); 
+
+                this.domeGeo = new THREE.SphereGeometry(0.55, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+                this.domeGeo.translate(0, 0.5, 0);
+
+                // Edges (Using threshold angle to keep it clean)
+                this.boxEdges = new THREE.EdgesGeometry(this.boxGeo);
+                this.cylEdges = new THREE.EdgesGeometry(this.cylGeo, 30);
+                this.archEdges = new THREE.EdgesGeometry(this.archGeo, 20);
+                this.wedgeEdges = new THREE.EdgesGeometry(this.wedgeGeo, 20);
+                
+                this.roofEdges = new THREE.EdgesGeometry(this.roofGeo);
+                this.domeEdges = new THREE.EdgesGeometry(this.domeGeo, 30);
+                
+                // Dark edge material to match twilight theme
+                this.edgeMaterial = new THREE.LineBasicMaterial({ color: 0x0f1423, linewidth: 2 });
+            }
+
+            initLighting() {
+                // Warm ambient glow from below/around
+                const ambientLight = new THREE.HemisphereLight(0xaabbee, 0x443333, 0.5);
+                this.scene.add(ambientLight);
+
+                // Cool moonlight
+                const dirLight = new THREE.DirectionalLight(0xaaccff, 0.8);
+                dirLight.position.set(20, 40, -10);
+                dirLight.castShadow = true;
+                dirLight.shadow.mapSize.width = 2048;
+                dirLight.shadow.mapSize.height = 2048;
+                dirLight.shadow.camera.left = -30; dirLight.shadow.camera.right = 30;
+                dirLight.shadow.camera.top = 30; dirLight.shadow.camera.bottom = -30;
+                dirLight.shadow.bias = -0.001;
+                this.scene.add(dirLight);
+
+                // A warm point light placed near the origin to simulate town lanterns
+                const lanternLight = new THREE.PointLight(0xffa500, 1.5, 50);
+                lanternLight.position.set(0, 5, 5);
+                this.scene.add(lanternLight);
+            }
+
+            initEnvironment() {
+                // Pre-generate textures
+                this.stoneTexture = TextureFactory.createStoneTexture();
+                this.roofTexture = TextureFactory.createRoofTexture();
+
+                // Dark, reflective ocean
+                const waterGeo = new THREE.PlaneGeometry(500, 500);
+                const waterMat = new THREE.MeshStandardMaterial({ 
+                    color: 0x0f162c, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.95
+                });
+                this.water = new THREE.Mesh(waterGeo, waterMat);
+                this.water.rotation.x = -Math.PI / 2;
+                this.water.position.y = -0.5; 
+                this.water.receiveShadow = true;
+                this.scene.add(this.water);
+
+                this.gridPlane = new THREE.Mesh(waterGeo, new THREE.MeshBasicMaterial({ visible: false }));
+                this.gridPlane.rotation.x = -Math.PI / 2;
+                this.gridPlane.position.y = -0.5;
+                this.scene.add(this.gridPlane);
+                this.interactables.push(this.gridPlane);
+            }
+
+            initCursor() {
+                const cursorGeo = new THREE.BoxGeometry(1.05, 1.05, 1.05);
+                const cursorMat = new THREE.MeshBasicMaterial({ 
+                    color: 0x64ffda, opacity: 0.4, transparent: true, wireframe: true 
+                });
+                this.cursor = new THREE.Mesh(cursorGeo, cursorMat);
+                this.scene.add(this.cursor);
+            }
+
+            setupUI() {
+                const palette = document.getElementById('palette');
+                this.colors.forEach((color, index) => {
+                    const btn = document.createElement('div');
+                    btn.className = `color-btn ${index === 0 ? 'active' : ''}`;
+                    btn.style.backgroundColor = color;
+                    btn.onclick = () => {
+                        document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        this.activeColor = color;
+                    };
+                    palette.appendChild(btn);
+                });
+
+                // Set up tool buttons
+                const tools = {
+                    'modeBuild': () => { this.buildMode = true; },
+                    'modeDelete': () => { this.buildMode = false; }
+                };
+                for (const [id, func] of Object.entries(tools)) {
+                    const btn = document.getElementById(id);
+                    btn.onclick = () => {
+                        func();
+                        document.getElementById('modeBuild').classList.remove('active-tool');
+                        document.getElementById('modeDelete').classList.remove('active-tool');
+                        btn.classList.add('active-tool');
+                    };
+                }
+
+                // Set up shape buttons
+                const shapes = ['Square', 'Round', 'Arch', 'Wedge'];
+                shapes.forEach(shape => {
+                    const btn = document.getElementById(`shape${shape}`);
+                    btn.onclick = () => {
+                        this.activeShape = shape.toLowerCase();
+                        shapes.forEach(s => document.getElementById(`shape${s}`).classList.remove('active-tool'));
+                        btn.classList.add('active-tool');
+                    };
+                });
+
+                document.getElementById('clearBtn').onclick = () => {
+                    for (let [key, block] of this.blocks.entries()) {
+                        this.scene.remove(block.group);
+                    }
+                    this.blocks.clear();
+                    this.interactables = [this.gridPlane];
+                };
+            }
+
+            initInteraction() {
+                this.raycaster = new THREE.Raycaster();
+                this.pointer = new THREE.Vector2();
+                this.isDragging = false;
+                this.touchStart = { x: 0, y: 0 };
+                
+                const canvas = this.renderer.domElement;
+
+                canvas.addEventListener('mousedown', () => { this.isDragging = false; });
+                canvas.addEventListener('mousemove', (e) => { 
+                    this.isDragging = true; 
+                    this.updatePointer(e.clientX, e.clientY);
+                });
+                canvas.addEventListener('contextmenu', e => e.preventDefault()); 
+                canvas.addEventListener('mouseup', (e) => {
+                    if (!this.isDragging) {
+                        if (e.button === 0) this.handleInteraction(this.buildMode); 
+                        if (e.button === 2) this.handleInteraction(false); 
+                    }
+                });
+
+                canvas.addEventListener('touchstart', (e) => {
+                    if (e.touches.length > 1) return;
+                    this.isDragging = false;
+                    this.touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                    this.updatePointer(e.touches[0].clientX, e.touches[0].clientY);
+                }, { passive: false });
+
+                canvas.addEventListener('touchmove', (e) => {
+                    if (e.touches.length > 1) return;
+                    const dx = e.touches[0].clientX - this.touchStart.x;
+                    const dy = e.touches[0].clientY - this.touchStart.y;
+                    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) this.isDragging = true;
+                    this.updatePointer(e.touches[0].clientX, e.touches[0].clientY);
+                }, { passive: false });
+
+                canvas.addEventListener('touchend', (e) => {
+                    if (!this.isDragging && e.changedTouches.length === 1) {
+                        this.handleInteraction(this.buildMode);
+                    }
+                });
+
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+            }
+
+            updatePointer(x, y) {
+                this.pointer.x = (x / window.innerWidth) * 2 - 1;
+                this.pointer.y = -(y / window.innerHeight) * 2 + 1;
+
+                this.raycaster.setFromCamera(this.pointer, this.camera);
+                const intersects = this.raycaster.intersectObjects(this.interactables);
+
+                if (intersects.length > 0) {
+                    const intersect = intersects[0];
+                    let targetPos = new THREE.Vector3().copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5));
+                    
+                    targetPos.x = Math.round(targetPos.x);
+                    targetPos.y = Math.round(targetPos.y);
+                    targetPos.z = Math.round(targetPos.z);
+                    
+                    if (targetPos.y < 0) targetPos.y = 0; 
+
+                    this.cursor.position.copy(targetPos);
+                    this.cursor.material.color.setHex(this.buildMode ? 0x64ffda : 0xe06c75);
+                }
+            }
+
+            handleInteraction(isBuilding) {
+                this.raycaster.setFromCamera(this.pointer, this.camera);
+                const intersects = this.raycaster.intersectObjects(this.interactables);
+
+                if (intersects.length > 0) {
+                    const intersect = intersects[0];
+
+                    if (isBuilding) {
+                        let pos = new THREE.Vector3().copy(intersect.point).add(intersect.face.normal.multiplyScalar(0.5));
+                        pos.x = Math.round(pos.x); pos.y = Math.round(pos.y); pos.z = Math.round(pos.z);
+                        if (pos.y < 0) pos.y = 0;
+                        this.placeBlock(pos.x, pos.y, pos.z, this.activeColor, this.activeShape);
+                    } else {
+                        if (intersect.object !== this.gridPlane) {
+                            const parent = intersect.object.parent;
+                            if (parent && parent.userData.key) {
+                                this.removeBlock(parent.userData.key);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Retrieve or create texture to save performance
+            getStuccoMaterial(colorHex) {
+                if (!this.textureCache[colorHex]) {
+                    const tex = TextureFactory.createStuccoTexture(colorHex);
+                    this.textureCache[colorHex] = new THREE.MeshStandardMaterial({ 
+                        map: tex, roughness: 0.9, metalness: 0.05 
+                    });
+                }
+                return this.textureCache[colorHex];
+            }
+
+            placeBlock(x, y, z, colorHex, shapeType) {
+                const key = `${x},${y},${z}`;
+                if (this.blocks.has(key)) return;
+
+                const isFoundation = (y === 0);
+                let mat;
+                
+                if (isFoundation) {
+                    mat = new THREE.MeshStandardMaterial({ map: this.stoneTexture, roughness: 1.0 });
+                } else {
+                    mat = this.getStuccoMaterial(colorHex);
+                }
+
+                const group = new THREE.Group();
+                group.position.set(x, y, z);
+                
+                // Allow user to orient wedges & arches by camera angle
+                let rotationY = 0;
+                if (shapeType === 'wedge' || shapeType === 'arch') {
+                    // Snap camera angle to nearest 90 degrees
+                    const camAngle = Math.atan2(this.camera.position.x - x, this.camera.position.z - z);
+                    rotationY = Math.round(camAngle / (Math.PI / 2)) * (Math.PI / 2);
+                    group.rotation.y = rotationY;
+                }
+
+                group.userData = { key, x, y, z, shape: shapeType, isFoundation, rotationY };
+
+                // Map shapes
+                let currentGeo, currentEdges;
+                switch(shapeType) {
+                    case 'round': currentGeo = this.cylGeo; currentEdges = this.cylEdges; break;
+                    case 'arch': currentGeo = this.archGeo; currentEdges = this.archEdges; break;
+                    case 'wedge': currentGeo = this.wedgeGeo; currentEdges = this.wedgeEdges; break;
+                    default: currentGeo = this.boxGeo; currentEdges = this.boxEdges; break;
+                }
+
+                const mesh = new THREE.Mesh(currentGeo, mat);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                group.add(mesh);
+
+                const edges = new THREE.LineSegments(currentEdges, this.edgeMaterial);
+                group.add(edges);
+
+                this.scene.add(group);
+                this.interactables.push(mesh); 
+                
+                this.blocks.set(key, { group, mesh, hasRoof: false });
+
+                group.scale.set(0.1, 0.1, 0.1);
+                this.animateScale(group, 1);
+
+                this.updateContext(x, y, z);
+                this.updateContext(x, y - 1, z);
+            }
+
+            removeBlock(key) {
+                const block = this.blocks.get(key);
+                if (!block) return;
+
+                const { x, y, z } = block.group.userData;
+
+                this.animateScale(block.group, 0.01, () => {
+                    this.scene.remove(block.group);
+                    this.interactables = this.interactables.filter(obj => obj !== block.mesh);
+                    this.blocks.delete(key);
+                    
+                    this.updateContext(x, y - 1, z);
+                });
+            }
+
+            updateContext(x, y, z) {
+                const key = `${x},${y},${z}`;
+                const block = this.blocks.get(key);
+                if (!block) return;
+
+                const aboveKey = `${x},${y + 1},${z}`;
+                const hasBlockAbove = this.blocks.has(aboveKey);
+                
+                const shape = block.group.userData.shape;
+
+                // Wedges act as their own roofs. Never put a roof on a wedge.
+                if (shape === 'wedge') {
+                    if (block.hasRoof) {
+                        block.group.remove(block.roofMesh);
+                        block.hasRoof = false;
+                    }
+                    return; 
+                }
+
+                if (!hasBlockAbove && y > 0) {
+                    if (!block.hasRoof) {
+                        const isRound = (shape === 'round');
+                        const activeRoofGeo = isRound ? this.domeGeo : this.roofGeo;
+                        const activeRoofEdges = isRound ? this.domeEdges : this.roofEdges;
+
+                        const roofMat = new THREE.MeshStandardMaterial({ map: this.roofTexture, color: this.roofColor, roughness: 0.95 });
+                        const roofMesh = new THREE.Mesh(activeRoofGeo, roofMat);
+                        roofMesh.castShadow = true;
+                        
+                        const edges = new THREE.LineSegments(activeRoofEdges, this.edgeMaterial);
+                        roofMesh.add(edges);
+
+                        block.group.add(roofMesh);
+                        block.roofMesh = roofMesh;
+                        block.hasRoof = true;
+                    }
+                } else {
+                    if (block.hasRoof) {
+                        block.group.remove(block.roofMesh);
+                        block.roofMesh = null;
+                        block.hasRoof = false;
+                    }
+                }
+            }
+
+            animateScale(obj, targetScale, callback) {
+                let current = obj.scale.x;
+                const animate = () => {
+                    current += (targetScale - current) * 0.25; 
+                    obj.scale.set(current, current, current);
+                    
+                    if (Math.abs(targetScale - current) > 0.01) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        obj.scale.set(targetScale, targetScale, targetScale);
+                        if (callback) callback();
+                    }
+                };
+                animate();
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                this.controls.update(); 
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        window.onload = () => new TownscaperEngine();
+    </script>
+</body>
+</html>
